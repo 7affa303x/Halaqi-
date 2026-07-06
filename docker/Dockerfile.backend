@@ -1,0 +1,21 @@
+FROM node:20-alpine AS builder
+WORKDIR /app
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+COPY pnpm-workspace.yaml package.json ./
+COPY packages ./packages
+COPY apps/backend ./apps/backend
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter backend build
+
+FROM node:20-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+RUN corepack enable && corepack prepare pnpm@9.0.0 --activate
+COPY pnpm-workspace.yaml package.json ./
+COPY --from=builder /app/packages ./packages
+COPY --from=builder /app/apps/backend/dist ./apps/backend/dist
+COPY --from=builder /app/apps/backend/prisma ./apps/backend/prisma
+RUN pnpm install --prod --frozen-lockfile
+RUN pnpm --filter backend exec prisma generate
+EXPOSE 3001
+CMD ["node", "apps/backend/dist/main.js"]
